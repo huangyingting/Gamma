@@ -1,0 +1,412 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String              @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?
+  role               String              @default("EDITOR")
+  status             String              @default("ACTIVE")
+  revokedAt          DateTime?
+  credits            Int                 @default(12450)
+  gamma5Mode         Boolean             @default(false)
+  customInstructions String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  passwordCredential PasswordCredential?
+  accounts           Account[]
+  sessions           Session[]
+  memberships        WorkspaceMember[]
+  docs               Doc[]
+  sentInvitations    AccountInvitation[] @relation("InvitedByUser")
+  acceptedInvitation AccountInvitation[] @relation("AcceptedByUser")
+  auditLogs          AuditLog[]          @relation("ActorAuditLogs")
+  agentChats         AgentChat[]
+}
+
+model PasswordCredential {
+  userId            String    @id
+  passwordHash      String
+  passwordChangedAt DateTime  @default(now())
+  resetTokenHash    String?   @unique
+  resetExpiresAt    DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model AccountInvitation {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  email           String
+  normalizedEmail String
+  activeForEmail  String?   @unique
+  role            String    @default("EDITOR")
+  status          String    @default("PENDING")
+  tokenHash       String?   @unique
+  invitedById     String?
+  acceptedById    String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  invitedBy       User?     @relation("InvitedByUser", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedBy      User?     @relation("AcceptedByUser", fields: [acceptedById], references: [id], onDelete: SetNull)
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  action       String
+  actorId      String?
+  actorEmail   String?
+  targetType   String?
+  targetId     String?
+  targetEmail  String?
+  metadataJson String   @default("{}")
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+  actor        User?    @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model Workspace {
+  id                   String            @id @default(cuid())
+  name                 String
+  slug                 String            @unique
+  logoUrl              String?
+  defaultThemeId       String            @default("theme_prism")
+  defaultIconLibraryId String            @default("iconlib_Phosphor_duotone")
+  workspacePermission  String            @default("edit")
+  accessLinkPermission String            @default("view")
+  requireSso           Boolean           @default(false)
+  ssoDomain            String            @default("genesisiq.ai")
+  ssoProvider          String            @default("Okta SAML 2.0")
+  customInstructions   String            @default("Lead with executive takeaways and quantifiable ROI metrics. Use 3-column Smart Layouts for architecture comparisons and keep body copy under 45 words per card.")
+  credits              Int               @default(12450)
+  planTier             String            @default("ENTERPRISE")
+  settingsJson         String            @default("{}")
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  members              WorkspaceMember[]
+  groups               WorkspaceGroup[]
+  folders              Folder[]
+  docs                 Doc[]
+  themes               Theme[]
+  customFonts          CustomFont[]
+  iconLibraries        IconLibrary[]
+  templates            Template[]
+  aiImages             AiImage[]
+  sites                Site[]
+  apiKeys              ApiKey[]
+  mcpConnectors        McpConnector[]
+  agentChats           AgentChat[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String    @default("EDITOR")
+  isGuest     Boolean   @default(false)
+  groupName   String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model WorkspaceGroup {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  description String
+  memberCount Int       @default(1)
+  permission  String    @default("edit")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  keyPrefix   String
+  keyHash     String    @unique
+  scopes      String    @default("docs:read,docs:write,generate:run,templates:use")
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model McpConnector {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  provider    String
+  category    String    @default("first_party")
+  status      String    @default("connected")
+  endpointUrl String?
+  description String
+  icon        String    @default("plug")
+  configJson  String    @default("{}")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Folder {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  slug            String    @unique
+  description     String?
+  color           String    @default("#4f46e5")
+  isPinned        Boolean   @default(false)
+  ownerId         String?
+  accessLevel     String    @default("workspace")
+  permissionsJson String    @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  docs            Doc[]
+}
+
+model Doc {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  folderId        String?
+  ownerId         String?
+  title           String
+  slug            String        @unique
+  format          String        @default("PRESENTATION")
+  themeId         String        @default("theme_prism")
+  status          String        @default("PUBLISHED")
+  isFavorite      Boolean       @default(false)
+  isTemplate      Boolean       @default(false)
+  isApiGenerated  Boolean       @default(false)
+  isSharedWithMe  Boolean       @default(false)
+  workspaceAccess String        @default("edit")
+  publicAccess    String        @default("view")
+  passwordHash    String?
+  pageSetupJson   String        @default("{\"aspectRatio\":\"16:9\",\"cardWidth\":\"medium\",\"backdrop\":\"aurora\",\"showPageNumbers\":true,\"showHeaderLogo\":true}")
+  customCodeJson  String        @default("{\"headHtml\":\"\",\"bodyHtml\":\"\",\"customCss\":\"\"}")
+  analyticsJson   String        @default("{\"uniqueViewers\":184,\"completionRate\":88,\"avgDurationSec\":195}")
+  speakerNotes    String?
+  viewCount       Int           @default(42)
+  lastViewedAt    DateTime      @default(now())
+  trashedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder          Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  owner           User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  cards           Card[]
+  snapshots       DocSnapshot[]
+  comments        DocComment[]
+  sites           Site[]
+}
+
+model Card {
+  id                    String   @id @default(cuid())
+  docId                 String
+  orderIndex            Int
+  title                 String
+  subtitle              String?
+  layoutType            String   @default("SMART_BOXES")
+  accentPosition        String   @default("none")
+  accentImageUrl        String?
+  backgroundColor       String?
+  fullBleed             Boolean  @default(false)
+  contentAlignment      String   @default("center")
+  speakerNotes          String   @default("")
+  blocksJson            String   @default("[]")
+  smartLayoutConfigJson String   @default("{\"variant\":\"boxes\",\"columns\":3,\"cellStyle\":\"tinted\",\"marker\":\"numbered\",\"spacing\":\"medium\"}")
+  chartConfigJson       String   @default("{\"chartType\":\"area\",\"colorScheme\":\"gradient\",\"title\":\"Quarterly Execution Velocity\",\"rows\":[{\"label\":\"Q1 2026\",\"value\":42,\"target\":40},{\"label\":\"Q2 2026\",\"value\":68,\"target\":60},{\"label\":\"Q3 2026\",\"value\":94,\"target\":85},{\"label\":\"Q4 2026\",\"value\":128,\"target\":110}]}")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  doc                   Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
+}
+
+model DocSnapshot {
+  id            String   @id @default(cuid())
+  docId         String
+  versionNumber Int
+  label         String
+  authorName    String
+  summary       String
+  cardsDumpJson String   @default("[]")
+  createdAt     DateTime @default(now())
+  doc           Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
+}
+
+model DocComment {
+  id            String   @id @default(cuid())
+  docId         String
+  cardId        String?
+  authorName    String
+  authorEmail   String
+  content       String
+  reactionsJson String   @default("{\"🔥\":2,\"👍\":1}")
+  resolved      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  doc           Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
+}
+
+model Theme {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  name             String
+  slug             String    @unique
+  category         String    @default("STANDARD")
+  isDefault        Boolean   @default(false)
+  primaryColor     String    @default("#4f46e5")
+  secondaryColor   String    @default("#7c3aed")
+  accentColor      String    @default("#06b6d4")
+  backgroundColor  String    @default("#0f172a")
+  surfaceColor     String    @default("#1e293b")
+  textColor        String    @default("#f8fafc")
+  headingFont      String    @default("Plus Jakarta Sans")
+  bodyFont         String    @default("Inter")
+  cardBorderRadius String    @default("16px")
+  cardShadow       String    @default("elevated")
+  gradientCss      String    @default("linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%)")
+  customCss        String    @default("")
+  createdAt        DateTime  @default(now())
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model CustomFont {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  familyName      String
+  weightsJson     String    @default("[\"400 Regular\",\"500 Medium\",\"700 Bold\"]")
+  format          String    @default("WOFF2")
+  fileSizeKb      Int       @default(148)
+  uploadedBy      String    @default("Jack Wolf")
+  licenseVerified Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model IconLibrary {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String    @unique
+  style       String    @default("Duotone")
+  iconCount   Int       @default(48)
+  iconsJson   String    @default("[\"sparkles\",\"rocket\",\"layers\",\"shield\",\"cpu\",\"globe\",\"chart\",\"zap\"]")
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  title               String
+  slug                String    @unique
+  category            String    @default("Strategy")
+  description         String
+  format              String    @default("PRESENTATION")
+  themeId             String    @default("theme_prism")
+  cardCount           Int       @default(6)
+  isWorkspaceTemplate Boolean   @default(false)
+  isArchived          Boolean   @default(false)
+  thumbnailGradient   String    @default("linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #06b6d4 100%)")
+  cardsJson           String    @default("[]")
+  usageCount          Int       @default(120)
+  createdAt           DateTime  @default(now())
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AiImage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  prompt      String
+  model       String    @default("Flux Fast 1.1")
+  style       String    @default("3D Glassmorphism")
+  aspectRatio String    @default("16:9")
+  source      String    @default("AI_GENERATED")
+  imageUrl    String
+  svgData     String?
+  creatorName String    @default("Jack Wolf")
+  creditsCost Int       @default(10)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Site {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  docId            String
+  name             String
+  subdomain        String    @unique
+  customDomain     String?
+  status           String    @default("ACTIVE")
+  navLinksJson     String    @default("[{\"label\":\"Overview\",\"href\":\"#card-1\"},{\"label\":\"Architecture\",\"href\":\"#card-2\"},{\"label\":\"Metrics\",\"href\":\"#card-3\"},{\"label\":\"Roadmap\",\"href\":\"#card-4\"}]")
+  seoTitle         String?
+  seoDescription   String?
+  analyticsEnabled Boolean   @default(true)
+  publishedAt      DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  doc              Doc       @relation(fields: [docId], references: [id], onDelete: Cascade)
+}
+
+model AgentChat {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  docId        String?
+  userId       String?
+  title        String
+  mode         String    @default("STANDARD")
+  messagesJson String    @default("[]")
+  creditsUsed  Int       @default(15)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
